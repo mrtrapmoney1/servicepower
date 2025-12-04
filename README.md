@@ -7,9 +7,25 @@ Firebase Cloud Functions for ServicePower integration with **TWO** APIs:
 
 ## 📚 Quick Links
 
-- **[Claims API Guide](CLAIMS_API_GUIDE.md)** - Complete guide for the JSON REST API ⭐ **START HERE!**
+- **[🚀 QUICK START - Get Claims Now!](QUICK-START.md)** ⭐ **START HERE!**
+- **[Claims API Guide](CLAIMS_API_GUIDE.md)** - Complete guide for the JSON REST API
 - **[SOAP API Testing](TESTING.md)** - Guide for the SOAP API
 - **[Error Handling](SOAP_ERROR_HANDLING.md)** - SOAP error details
+
+## 🎯 Get Claims in 10 Seconds
+
+```bash
+# Get all claims
+node examples/get-all-claims.js
+
+# Get specific claim
+node examples/get-claim-by-number.js CLM00012345
+
+# Full test with debugging
+node test-claims.js
+```
+
+See **[QUICK-START.md](QUICK-START.md)** for examples and explanations!
 
 ## 🔧 What Was Fixed
 
