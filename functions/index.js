@@ -17,8 +17,14 @@ const parseXml = (xml) => {
   });
 };
 
+// Helper function to mask password for logging (shows first 2 and last 2 chars)
+const maskPassword = (password) => {
+  if (!password || password.length <= 4) return '****';
+  return password.substring(0, 2) + '****' + password.substring(password.length - 2);
+};
+
 // Helper function to extract error information from SOAP response
-const extractSoapError = (jsonResponse) => {
+const extractSoapError = (jsonResponse, credentials = null) => {
   const soapBody = jsonResponse['soapenv:Envelope']?.['soapenv:Body'];
 
   // Check for SOAP fault
@@ -51,10 +57,20 @@ const extractSoapError = (jsonResponse) => {
     // Determine appropriate HTTP status code based on error type
     let statusCode = 500;
     let hint = undefined;
+    let attemptedCredentials = undefined;
 
     if (errorCode === 'SP005' || errorDescription?.includes('Password')) {
       statusCode = 401; // Unauthorized for authentication errors
       hint = "Please verify your ServicePower credentials are correct in Firebase config.";
+
+      // Include attempted credentials for debugging
+      if (credentials) {
+        attemptedCredentials = {
+          UserID: credentials.userId || '(not set)',
+          Password: maskPassword(credentials.password),
+          SvcrAcct: credentials.svcrAcct || '(not set)'
+        };
+      }
     } else if (errorCode === 'SP001' || errorDescription?.includes('not found')) {
       statusCode = 404; // Not found
     } else if (errorCode === 'SP002' || errorDescription?.includes('Invalid')) {
@@ -69,7 +85,8 @@ const extractSoapError = (jsonResponse) => {
         code: errorCode,
         description: errorDescription,
         cause: errorCause,
-        hint
+        hint,
+        attemptedCredentials
       }
     };
   }
@@ -175,7 +192,7 @@ exports.getServicePowerData = functions.https.onRequest(async (req, res) => {
     const jsonResponse = await parseXml(textResponse);
 
     // Check for errors in SOAP response (both SOAP faults and application-level errors)
-    const errorResult = extractSoapError(jsonResponse);
+    const errorResult = extractSoapError(jsonResponse, { userId, password, svcrAcct });
     if (errorResult) {
       console.error(`${errorResult.error.type}:`, errorResult.error);
       res.status(errorResult.statusCode).json(errorResult.error);
