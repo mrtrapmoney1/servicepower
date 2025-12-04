@@ -1,0 +1,15 @@
+{
+  "name": "servicepower-api",
+  "description": "Integration between ServicePower and Firebase",
+  "engines": {
+    "node": "22"
+  },
+  "main": "index.js",
+  "dependencies": {
+    "firebase-admin": "^12.0.0",
+    "firebase-functions": "^5.0.0",
+    "node-fetch": "^2.6.7",
+    "xml2js": "^0.6.2"
+  },
+  "private": true
+}
