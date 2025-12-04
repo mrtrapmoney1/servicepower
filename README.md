@@ -4,26 +4,40 @@ Firebase Cloud Function to fetch call information from ServicePower's SOAP API.
 
 ## 🔧 What Was Fixed
 
-### Critical Issues Resolved:
-1. **Empty SOAPAction Header** ❌ → ✅ Fixed
-   - The SOAP API requires `SOAPAction: "urn:SPDServicerService#getCallInfoSearch"`
-   - This was the primary cause of API failures
+### Critical Issues Resolved (Per ServicePower API Documentation):
 
-2. **Hardcoded Credentials** ❌ → ✅ Fixed
+1. **❌ WRONG DATE FORMAT → ✅ Fixed**
+   - **Previous:** Used `YYYY-MM-DD` format (e.g., "2025-11-25")
+   - **Current:** Uses `CCYYMMDD` format (e.g., "20251125")
+   - **Impact:** This was likely causing API rejections or data retrieval failures
+   - **Spec:** ServicePower API requires CCYYMMDD format per documentation
+
+2. **❌ Empty SOAPAction Header → ✅ Fixed**
+   - The SOAP API requires `SOAPAction: "urn:SPDServicerService#getCallInfoSearch"`
+   - This was causing API request routing failures
+
+3. **❌ Hardcoded Credentials → ✅ Fixed**
    - Moved credentials to Firebase config/environment variables
    - Previous hardcoded credentials have been removed from code
+   - **Note:** Use web service credentials, NOT website login credentials
 
-3. **Hardcoded Dates** ❌ → ✅ Fixed
-   - Now accepts `fromDate` and `toDate` as query parameters
-   - Defaults to last 10 days if not specified
+4. **❌ Missing Manufacturer ID Support → ✅ Fixed**
+   - Added optional `manufacturerName` / `MfgId` parameter
+   - Can be set via config or passed as query parameter
+   - Required for some ServicePower operations
 
-4. **Missing CORS Headers** ❌ → ✅ Fixed
+5. **❌ No Response Code Validation → ✅ Fixed**
+   - Now checks for ServicePower `responseCode` field
+   - Validates "OK" (success) vs "ER" (error) per API spec
+   - Parses `messages` and `errorData` fields for detailed errors
+
+6. **❌ Missing CORS Headers → ✅ Fixed**
    - Added CORS support for frontend access
 
-5. **Poor Error Handling** ❌ → ✅ Fixed
+7. **❌ Poor Error Handling → ✅ Fixed**
    - Added HTTP status code checking
    - Added SOAP fault detection
-   - Added detailed error messages
+   - Added ServicePower-specific error response handling
 
 ## 🚀 Setup Instructions
 
@@ -37,10 +51,13 @@ npm install
 
 **For Firebase Deployment:**
 ```bash
-firebase functions:config:set servicepower.userid="met11106"
-firebase functions:config:set servicepower.password="B314@ezp!!"
-firebase functions:config:set servicepower.svcracct="met11106"
+firebase functions:config:set servicepower.userid="your_user_id"
+firebase functions:config:set servicepower.password="your_password"
+firebase functions:config:set servicepower.svcracct="your_servicer_account"
+firebase functions:config:set servicepower.mfgid="your_manufacturer_id"  # Optional
 ```
+
+**Note:** Use web service-specific credentials (not website login credentials)
 
 **For Local Development (optional):**
 ```bash
@@ -65,10 +82,13 @@ https://YOUR-REGION-YOUR-PROJECT.cloudfunctions.net/getServicePowerData
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `fromDate` | string | No | 10 days ago | Start date (YYYY-MM-DD) |
-| `toDate` | string | No | Today | End date (YYYY-MM-DD) |
+| `fromDate` | string | No | 10 days ago | Start date (CCYYMMDD format: 20251204) |
+| `toDate` | string | No | Today | End date (CCYYMMDD format: 20251204) |
 | `callNo` | string | No | Empty | Specific call number to search |
 | `versionNo` | string | No | Empty | Version number to search |
+| `manufacturerName` | string | No | Config value | Manufacturer name/ID (optional) |
+
+**Date Format:** ServicePower uses CCYYMMDD format (e.g., December 4, 2025 = "20251204")
 
 ### Example Requests
 
@@ -79,7 +99,7 @@ curl https://YOUR-REGION-YOUR-PROJECT.cloudfunctions.net/getServicePowerData
 
 **Get data for specific date range:**
 ```bash
-curl "https://YOUR-REGION-YOUR-PROJECT.cloudfunctions.net/getServicePowerData?fromDate=2025-11-01&toDate=2025-11-30"
+curl "https://YOUR-REGION-YOUR-PROJECT.cloudfunctions.net/getServicePowerData?fromDate=20251101&toDate=20251130"
 ```
 
 **Search for specific call number:**
@@ -142,6 +162,29 @@ firebase functions:log
 - **Node.js**: 22
 - **API Endpoint**: ServicePower Staging (fssstag.servicepower.com)
 - **SOAP Action**: getCallInfoSearch
+- **API Type**: SPD (Service Dispatch) SOAP API
+
+## 🔑 Authentication & Identity
+
+Based on ServicePower API documentation:
+
+**You do NOT need a separate "client_id"** ✅
+
+Your identity is established through:
+1. **Authentication**: `userId` + `password` (web service credentials)
+2. **Account Identification**:
+   - `serviceCenterNumber` / `SvcrAcct` - Your servicer account (acts as client identifier)
+   - `manufacturerName` / `MfgId` - Your manufacturer/network identifier (optional)
+
+**Credential Types:**
+- **Manufacturer clients**: Must use web service-specific credentials (different from website login)
+- **Service centers**: Can use website credentials for API access
+
+**What ServicePower Provides:**
+- `userId` - Web service user ID
+- `password` - Web service password
+- `serviceCenterNumber` - Your account number (KPI account)
+- `manufacturerName` - Your manufacturer ID (if applicable)
 
 ## 🐛 Troubleshooting
 

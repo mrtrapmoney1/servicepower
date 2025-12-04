@@ -17,13 +17,14 @@ const parseXml = (xml) => {
   });
 };
 
-// Helper function to format dates as YYYY-MM-DD
+// Helper function to format dates as CCYYMMDD (ServicePower standard format)
+// Example: December 4, 2025 -> "20251204"
 const formatDate = (date) => {
   const d = new Date(date);
   const year = d.getFullYear();
   const month = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return `${year}${month}${day}`;
 };
 
 exports.getServicePowerData = functions.https.onRequest(async (req, res) => {
@@ -44,6 +45,7 @@ exports.getServicePowerData = functions.https.onRequest(async (req, res) => {
     const userId = config.servicepower?.userid || process.env.SP_USER_ID;
     const password = config.servicepower?.password || process.env.SP_PASSWORD;
     const svcrAcct = config.servicepower?.svcracct || process.env.SP_SVCRACCT || userId;
+    const mfgId = config.servicepower?.mfgid || process.env.SP_MFG_ID || '';
 
     if (!userId || !password) {
       console.error("Missing credentials. Please set Firebase config or environment variables.");
@@ -59,14 +61,18 @@ exports.getServicePowerData = functions.https.onRequest(async (req, res) => {
     const tenDaysAgo = new Date();
     tenDaysAgo.setDate(today.getDate() - 10);
 
+    // Dates can be passed as CCYYMMDD (20251204) or will be formatted automatically
     const fromDate = req.query.fromDate || formatDate(tenDaysAgo);
     const toDate = req.query.toDate || formatDate(today);
     const callNo = req.query.callNo || '';
     const versionNo = req.query.versionNo || '';
+    const manufacturerName = req.query.manufacturerName || mfgId;
 
-    console.log(`Fetching ServicePower data from ${fromDate} to ${toDate}`);
+    console.log(`Fetching ServicePower data from ${fromDate} to ${toDate}`,
+                manufacturerName ? `for manufacturer: ${manufacturerName}` : '');
 
     // Credentials wrapped in CDATA to handle special characters safely
+    // Date format: CCYYMMDD (e.g., 20251204) per ServicePower API specification
     const soapBody = `
       <soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/" xmlns:urn="urn:SPDServicerService">
          <soapenv:Header/>
@@ -75,7 +81,8 @@ exports.getServicePowerData = functions.https.onRequest(async (req, res) => {
                <UserInfo>
                   <UserID><![CDATA[${userId}]]></UserID>
                   <Password><![CDATA[${password}]]></Password>
-                  <SvcrAcct><![CDATA[${svcrAcct}]]></SvcrAcct>
+                  <SvcrAcct><![CDATA[${svcrAcct}]]></SvcrAcct>${manufacturerName ? `
+                  <MfgId><![CDATA[${manufacturerName}]]></MfgId>` : ''}
                </UserInfo>
                <FromDateTime>${fromDate}</FromDateTime>
                <ToDateTime>${toDate}</ToDateTime>
@@ -127,12 +134,42 @@ exports.getServicePowerData = functions.https.onRequest(async (req, res) => {
       return;
     }
 
+    // Extract the response body
+    const responseBody = jsonResponse['soapenv:Envelope']?.['soapenv:Body'];
+    const callInfoResponse = responseBody?.['ns1:getCallInfoSearchResponse'] || responseBody;
+
+    // Check for ServicePower API error response (responseCode: "ER")
+    // Per documentation: OK = success, ER = error
+    if (callInfoResponse?.responseCode === 'ER' || callInfoResponse?.ResponseCode === 'ER') {
+      const messages = callInfoResponse.messages || callInfoResponse.Messages || [];
+      const errorData = callInfoResponse.errorData || callInfoResponse.ErrorData;
+
+      console.error("ServicePower API Error:", {
+        responseCode: callInfoResponse.responseCode || callInfoResponse.ResponseCode,
+        messages,
+        errorData
+      });
+
+      res.status(400).json({
+        error: "ServicePower API Error",
+        responseCode: "ER",
+        messages: Array.isArray(messages) ? messages : [messages],
+        errorData: errorData ? {
+          code: errorData.code,
+          description: errorData.description,
+          cause: errorData.cause
+        } : undefined
+      });
+      return;
+    }
+
     res.json({
       status: "success",
       data: jsonResponse,
       metadata: {
         fromDate,
         toDate,
+        responseCode: callInfoResponse?.responseCode || callInfoResponse?.ResponseCode || 'OK',
         timestamp: new Date().toISOString()
       }
     });
