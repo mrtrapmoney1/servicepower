@@ -1,6 +1,15 @@
 # ServicePower Firebase Integration
 
-Firebase Cloud Function to fetch call information from ServicePower's SOAP API.
+Firebase Cloud Functions for ServicePower integration with **TWO** APIs:
+
+1. **SOAP API** - For fetching call information (original implementation)
+2. **JSON REST API** - For retrieving claims data (NEW!)
+
+## 📚 Quick Links
+
+- **[Claims API Guide](CLAIMS_API_GUIDE.md)** - Complete guide for the JSON REST API ⭐ **START HERE!**
+- **[SOAP API Testing](TESTING.md)** - Guide for the SOAP API
+- **[Error Handling](SOAP_ERROR_HANDLING.md)** - SOAP error details
 
 ## 🔧 What Was Fixed
 
