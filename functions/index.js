@@ -17,6 +17,66 @@ const parseXml = (xml) => {
   });
 };
 
+// Helper function to extract error information from SOAP response
+const extractSoapError = (jsonResponse) => {
+  const soapBody = jsonResponse['soapenv:Envelope']?.['soapenv:Body'];
+
+  // Check for SOAP fault
+  if (soapBody?.['soapenv:Fault']) {
+    const fault = soapBody['soapenv:Fault'];
+    return {
+      isFault: true,
+      statusCode: 500,
+      error: {
+        type: "SOAP Fault",
+        faultcode: fault.faultcode,
+        faultstring: fault.faultstring,
+        detail: fault.detail
+      }
+    };
+  }
+
+  // Check for application-level errors in response body
+  // ServicePower uses different response element names (note the typo "Responce")
+  const callInfoResponse = soapBody?.['getCallInfoResponce'] ||
+                          soapBody?.['getCallInfoSearchResponse'] ||
+                          soapBody?.['getCallInfoResponse'];
+
+  if (callInfoResponse?.ErrorInfo) {
+    const errorInfo = callInfoResponse.ErrorInfo;
+    const errorCode = errorInfo.Code;
+    const errorDescription = errorInfo.Description;
+    const errorCause = errorInfo.Cause;
+
+    // Determine appropriate HTTP status code based on error type
+    let statusCode = 500;
+    let hint = undefined;
+
+    if (errorCode === 'SP005' || errorDescription?.includes('Password')) {
+      statusCode = 401; // Unauthorized for authentication errors
+      hint = "Please verify your ServicePower credentials are correct in Firebase config.";
+    } else if (errorCode === 'SP001' || errorDescription?.includes('not found')) {
+      statusCode = 404; // Not found
+    } else if (errorCode === 'SP002' || errorDescription?.includes('Invalid')) {
+      statusCode = 400; // Bad request for validation errors
+    }
+
+    return {
+      isFault: false,
+      statusCode,
+      error: {
+        type: "ServicePower API Error",
+        code: errorCode,
+        description: errorDescription,
+        cause: errorCause,
+        hint
+      }
+    };
+  }
+
+  return null; // No error found
+};
+
 // Helper function to format dates as YYYY-MM-DD
 const formatDate = (date) => {
   const d = new Date(date);
@@ -114,16 +174,11 @@ exports.getServicePowerData = functions.https.onRequest(async (req, res) => {
 
     const jsonResponse = await parseXml(textResponse);
 
-    // Check for SOAP faults
-    if (jsonResponse['soapenv:Envelope']?.['soapenv:Body']?.['soapenv:Fault']) {
-      const fault = jsonResponse['soapenv:Envelope']['soapenv:Body']['soapenv:Fault'];
-      console.error("SOAP Fault:", fault);
-      res.status(500).json({
-        error: "SOAP Fault",
-        faultcode: fault.faultcode,
-        faultstring: fault.faultstring,
-        detail: fault.detail
-      });
+    // Check for errors in SOAP response (both SOAP faults and application-level errors)
+    const errorResult = extractSoapError(jsonResponse);
+    if (errorResult) {
+      console.error(`${errorResult.error.type}:`, errorResult.error);
+      res.status(errorResult.statusCode).json(errorResult.error);
       return;
     }
 
